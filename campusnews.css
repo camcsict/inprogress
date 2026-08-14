@@ -1,0 +1,81 @@
+const SHEET_ID = '1o8R7cvq6hEZAhqbzzvdc5YeEoCqgdN5YBdfYFEj8NEQ';
+
+function doGet(e) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  
+  // 1. Lấy dữ liệu Bài viết (LiveNews)
+  const newsSheet = ss.getSheetByName("LiveNews");
+  const newsRows = newsSheet ? newsSheet.getDataRange().getValues() : [];
+  const newsHeaders = newsRows[0] || [];
+  const news = [];
+  
+  for (let i = 1; i < newsRows.length; i++) {
+    let rowData = {};
+    for (let j = 0; j < newsHeaders.length; j++) {
+      rowData[newsHeaders[j]] = newsRows[i][j];
+    }
+    if (String(rowData['Status']).trim() === 'Published') {
+      news.push(rowData);
+    }
+  }
+
+  // 2. Lấy danh sách Chữ chạy (Tickers)
+  const tickerSheet = ss.getSheetByName("Tickers");
+  const tickerRows = tickerSheet ? tickerSheet.getDataRange().getValues() : [];
+  const tickers = [];
+  for (let i = 1; i < tickerRows.length; i++) {
+    if (String(tickerRows[i][1]).trim() === 'Active') {
+      tickers.push(tickerRows[i][0]);
+    }
+  }
+
+  // 3. Lấy danh sách các lớp có bảo mật (ClassAuth)
+  const authSheet = ss.getSheetByName("ClassAuth");
+  const authRows = authSheet ? authSheet.getDataRange().getValues() : [];
+  const classes = [];
+  for (let i = 1; i < authRows.length; i++) {
+    if (authRows[i][0]) classes.push(String(authRows[i][0]).trim());
+  }
+
+  const result = { news: news, tickers: tickers, classes: classes };
+  
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const data = JSON.parse(e.postData.contents);
+
+    // Tính năng XÁC THỰC MẬT KHẨU LỚP HỌC
+    if (data.action === 'verifyPassword') {
+      const authSheet = ss.getSheetByName("ClassAuth");
+      const authRows = authSheet ? authSheet.getDataRange().getValues() : [];
+      let isValid = false;
+
+      for (let i = 1; i < authRows.length; i++) {
+        if (String(authRows[i][0]).trim() === String(data.className).trim() &&
+            String(authRows[i][1]).trim() === String(data.password).trim()) {
+          isValid = true;
+          break;
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({ status: isValid ? "success" : "denied" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Tính năng HỌC SINH GỬI TIN
+    if (data.action === 'submitNews' || !data.action) {
+      const subSheet = ss.getSheetByName("Submissions");
+      subSheet.appendRow([ new Date(), data.studentName, data.studentClass, data.newsContent, "Pending" ]);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
